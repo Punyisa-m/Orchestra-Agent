@@ -1,0 +1,10 @@
+[server]
+headless = true
+enableCORS = false
+maxUploadSize = 10
+
+[theme]
+base = "dark"
+backgroundColor = "#0a0e1a"
+secondaryBackgroundColor = "#111827"
+textColor = "#f1f5f9"

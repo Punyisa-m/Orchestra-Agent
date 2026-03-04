@@ -25,6 +25,7 @@ from database import (
     simulate_actual_hours, reset_demo_data,
 )
 from graph import run_orchestra
+from auth import require_auth, render_user_widget, ROLE_MANAGER
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -37,6 +38,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 init_db()
+
+# ── Auth guard
+user = require_auth(ROLE_MANAGER)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DESIGN SYSTEM  (injected once via st.markdown)
@@ -399,9 +403,11 @@ def _skill_heatmap(skill_df: pd.DataFrame) -> go.Figure:
 # ──────────────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("### Orchestra-Agent")
-    st.markdown("<span style='color:#64748b;font-size:.8rem'>AI Task Manager · v2</span>",
+    st.markdown("### Manager Dashboard")
+    st.markdown("<span style='color:#64748b;font-size:.8rem'>AI Task Manager</span>",
                 unsafe_allow_html=True)
+    st.divider()
+    render_user_widget()
     st.divider()
 
     # LLM engine
@@ -646,10 +652,18 @@ if skill_rows:
     st.plotly_chart(_skill_heatmap(skill_df), width="stretch")
 
     with st.expander("Full Skill Matrix Table"):
-        st.dataframe(
-            skill_df.style.background_gradient(subset=["Proficiency"], cmap="Blues"),
-            width="stretch", hide_index=True,
-        )
+        # Pure CSS color — no matplotlib, works on pandas 1.x and 2.x+
+        def _color_score(val):
+            if not isinstance(val, (int, float)):
+                return ""
+            intensity = int(val / 10 * 180)
+            return f"background-color: rgb(30, {60 + intensity}, {130 + intensity//2}); color: white; font-weight: 600"
+        try:
+            # pandas >= 2.1 renamed applymap → map
+            styled = skill_df.style.map(_color_score, subset=["Proficiency"])
+        except AttributeError:
+            styled = skill_df.style.applymap(_color_score, subset=["Proficiency"])
+        st.dataframe(styled, width="stretch", hide_index=True)
 
 st.divider()
 

@@ -1,0 +1,109 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml  ·  Orchestra-Agent  ·  Production
+# ─────────────────────────────────────────────────────────────────────────────
+# Architecture:
+#   api        FastAPI + LangGraph  (port 8000)  RAM limit 900 MB
+#   streamlit  Streamlit UI         (port 8501)  RAM limit 400 MB
+#   Both share the same SQLite volume → single source of truth
+#
+# WHY separate services?
+#   - api can be scaled independently (e.g. 2 replicas) without duplicating UI
+#   - If the LLM call OOMs, only the api container restarts, UI stays up
+#   - Resource limits enforced at the cgroup level — kernel enforces them
+#     regardless of what the Python process does (no easy bypass)
+#
+# TOTAL RAM budget on 8 GB host:
+#   api        ≤ 900 MB
+#   streamlit  ≤ 400 MB
+#   OS + Docker overhead  ~1 GB
+#   Free for swap / other apps  ~5.7 GB  ✓
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── FastAPI AI backend ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: orchestra_api
+    command: >
+      uvicorn api.main:app
+        --host 0.0.0.0
+        --port 8000
+        --workers 1
+        --loop asyncio
+        --log-level warning
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_DIR=/data
+      - LOG_DIR=/app/logs
+      # Paste your key here, or use a .env file
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      - orchestra_data:/data       # SQLite database
+      - orchestra_logs:/app/logs   # log files
+    deploy:
+      resources:
+        limits:
+          memory: 900M             # hard cap — kernel OOM-kills if exceeded
+          cpus: "1.5"
+        reservations:
+          memory: 200M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── Streamlit UI ────────────────────────────────────────────────────────────
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: orchestra_ui
+    # Default CMD in Dockerfile is already `streamlit run app.py`
+    ports:
+      - "8501:8501"
+    environment:
+      - DATA_DIR=/data
+      - LOG_DIR=/app/logs
+      # Streamlit pages call /orchestrate on the api service by name
+      - API_BASE_URL=http://api:8000
+    volumes:
+      - orchestra_data:/data
+      - orchestra_logs:/app/logs
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+          cpus: "0.8"
+        reservations:
+          memory: 128M
+    restart: unless-stopped
+
+volumes:
+  orchestra_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data          # ./data folder on host — easy to back up
+
+  orchestra_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs

@@ -19,7 +19,6 @@ from datetime import datetime, timedelta, date
 import calendar
 import sys, os
 
-# Make database importable when running from the pages/ subfolder
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from database import (
@@ -27,6 +26,7 @@ from database import (
     get_employee_stats, get_upcoming_tasks,
     update_task_status, update_task_actual_hours,
 )
+from auth import require_auth, render_user_widget, ROLE_EMPLOYEE
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -228,30 +228,44 @@ def _task_card(t: dict) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SIDEBAR — employee selector  (simulates login)
+# AUTH GUARD — redirect to login if not authenticated
 # ──────────────────────────────────────────────────────────────────────────────
+
+user = require_auth(ROLE_EMPLOYEE)
+
+# Resolve which employee record to show.
+# - Employee role:  must use their own linked employee_id
+# - Manager/Admin:  may view any employee (picker shown in sidebar)
+all_employees = get_all_employees()
+emp_map       = {e["id"]: e for e in all_employees}
+
+if user["role"] == "employee":
+    emp_id = user["employee_id"]
+    if not emp_id or emp_id not in emp_map:
+        st.error("Your account is not linked to an employee record. "
+                 "Ask an admin to link your account in the Admin panel.")
+        st.stop()
+    emp_data    = emp_map[emp_id]
+    chosen_name = emp_data["name"]
+else:
+    # manager / admin can pick any employee to view
+    emp_names = [e["name"] for e in all_employees]
+    emp_by_name = {e["name"]: e for e in all_employees}
+    with st.sidebar:
+        chosen_name = st.selectbox("View employee", emp_names, key="mgr_emp_sel")
+    emp_data = emp_by_name[chosen_name]
+    emp_id   = emp_data["id"]
+
+my_tasks = get_tasks_for_employee(emp_id)
+my_stats = get_employee_stats(emp_id)
+upcoming = get_upcoming_tasks(emp_id, days=7)
 
 with st.sidebar:
     st.markdown("### My Tasks")
     st.markdown("<span style='color:#64748b;font-size:.8rem'>Employee View</span>",
                 unsafe_allow_html=True)
     st.divider()
-
-    employees  = get_all_employees()
-    emp_names  = [e["name"] for e in employees]
-    emp_map    = {e["name"]: e for e in employees}
-
-    chosen_name = st.selectbox(
-        "Select your name",
-        emp_names,
-        help="In production this would be replaced by proper authentication.",
-    )
-    emp_data  = emp_map[chosen_name]
-    emp_id    = emp_data["id"]
-    my_tasks  = get_tasks_for_employee(emp_id)
-    my_stats  = get_employee_stats(emp_id)
-    upcoming  = get_upcoming_tasks(emp_id, days=7)
-
+    render_user_widget()
     st.divider()
     st.markdown(f"""
 <div style="text-align:center;padding:.5rem 0">
@@ -287,7 +301,7 @@ with st.sidebar:
 </div>""", unsafe_allow_html=True)
 
     st.divider()
-    if st.button("Home", use_container_width=True):
+    if st.button("Home", use_container_width=True, key="my_home_btn"):
         st.switch_page("app.py")
 
 
@@ -656,7 +670,7 @@ with tab_log:
                 "Actual h":  t.get("actual_hours","—"),
                 "Deadline":  t.get("deadline","—"),
             } for t in done]
-            st.dataframe(pd.DataFrame(done_rows), use_container_width=True,
+            st.dataframe(pd.DataFrame(done_rows), width="stretch",
                          hide_index=True, height=250)
 
         # Efficiency chart if any actual hours logged

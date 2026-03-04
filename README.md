@@ -1,104 +1,256 @@
+
+---
+title: Orchestra-Agent
+emoji: 🎼
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: 1.38.0
+app_file: app.py
+pinned: false
+---
+
 # 🎼 Orchestra-Agent
 
-> **Autonomous AI Task Management System** — multi-node LangGraph pipeline
-> that breaks natural-language requests into atomic sub-tasks and assigns
-> them bias-free to the best-fit employees via a live Skill Matrix.
+> AI-powered task management system — from a single sentence to a fully assigned, scheduled team board.
+
+![Login](docs/screenshots/01_login.png)
+![Home](docs/screenshots/02_home.png)
+![Kanban](docs/screenshots/03_kanban.png)
 
 ---
 
-## Architecture
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| 🤖 **AI Task Planning** | Type a goal in plain English → 4-node LangGraph pipeline decomposes it into sub-tasks with priorities and deadlines |
+| ⚖️ **Bias-free Assignment** | Skill Matrix × Workload scoring — assigns each task to the best-fit person algorithmically |
+| 🔐 **Role-based Login** | `admin` / `manager` / `employee` — scoped views, no one sees data they shouldn't |
+| 📋 **Manager Kanban** | Full Kanban board with move-card controls and workload analytics |
+| 📅 **Employee Portal** | Personal Kanban + monthly calendar + Gantt timeline + hour logging |
+| ⚙️ **Admin CRUD** | Manage employees, skills, and user accounts through the web UI — no code changes ever |
+| 🐳 **Production-ready** | Docker + RAM limits + Loguru rotating logs + FastAPI `/health` endpoint |
+
+---
+
+## 🖼️ Screenshots
+
+### Manager Dashboard — AI Kanban Board
+![Manager Kanban](docs/screenshots/03_kanban.png)
+
+### AI Task Generation
+![AI Planning](docs/screenshots/04_ai_plan.png)
+
+### Employee View — My task
+![Calendar](docs/screenshots/05_Mytask.png)
+
+### Employee View — Calendar
+![Calendar](docs/screenshots/06_calendar.png)
+
+### Employee View — Timeline
+![Timeline](docs/screenshots/07_timeline.png)
+
+### Admin Panel — Skill Matrix
+![Admin](docs/screenshots/08_admin.png)
+
+---
+
+## 🏗️ Architecture
 
 ```
-User Input (NL)
-      │
-      ▼
-┌─────────────────────────────────────────────────────────┐
-│              LangGraph StateGraph                        │
+┌──────────────────────────────────────────────────────────┐
+│                     Streamlit UI                         │
+│  app.py · 1_Manager · 2_My_Tasks · 3_Admin               │
+└─────────────────────────┬────────────────────────────────┘
+                          │ POST /orchestrate
+┌─────────────────────────▼────────────────────────────────┐
+│                   FastAPI Backend                        │
 │                                                          │
-│  ┌──────────┐   ┌─────────────┐   ┌───────────┐         │
-│  │ PLANNER  │──►│ MATCHMAKER  │──►│ SCHEDULER │──► ...  │
-│  │ (LLM)   │   │ (Pure algo) │   │ (Deadline)│         │
-│  └──────────┘   └─────────────┘   └───────────┘         │
-│                                          │               │
-│                                          ▼               │
-│                                    ┌──────────┐          │
-│                                    │ REPORTER │          │
-│                                    │ (DB+MD)  │          │
-│                                    └──────────┘          │
-└─────────────────────────────────────────────────────────┘
-                         │
-                         ▼
-                  SQLite (orchestra.db)
-                         │
-                         ▼
-              Streamlit Dashboard (app.py)
+│  ┌──────────┐  ┌─────────────┐  ┌──────────┐  ┌──────┐  │
+│  │ Planner  │→ │  Matchmaker │→ │Scheduler │→ │Report│  │
+│  │ (LLM)    │  │(Skill×Load) │  │(Deadline)│  │(JSON)│  │
+│  └──────────┘  └─────────────┘  └──────────┘  └──────┘  │
+└─────────────────────────┬────────────────────────────────┘
+                          │
+┌─────────────────────────▼────────────────────────────────┐
+│             SQLite  (orchestra.db)                       │
+│         employees · skills · tasks · users               │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## File Structure
+## 🚀 Quick Start
 
-```
-orchestra_agent/
-├── database.py      # Schema, Pydantic models, all DB operations
-├── graph.py         # LangGraph nodes + graph compilation
-├── app.py           # Streamlit management dashboard
-├── requirements.txt # Python dependencies
-└── README.md
-```
+### Prerequisites
+- Python 3.11+
+- OpenAI API key **or** [Ollama](https://ollama.com) installed locally (free)
 
----
+### 1 — Clone & install
 
-## Quick Start
-
-### 1. Install dependencies
 ```bash
+git clone https://github.com/Punyisa-m/Orchestra-Agent.git
+cd orchestra-agent
+
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Mac / Linux
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-### 2a. Use OpenAI (recommended for best results)
+### 2 — Configure
+
 ```bash
-export OPENAI_API_KEY="sk-..."
+cp .env.example .env
+# Edit .env — add OPENAI_API_KEY or leave blank to use Ollama
 ```
 
-### 2b. Use Ollama (local, free)
-```bash
-# Install Ollama: https://ollama.com
-ollama pull llama3.1
-ollama serve           # keep this running in background
-```
+### 3 — Run
 
-### 3. Launch the dashboard
 ```bash
 streamlit run app.py
+# → http://localhost:8501
 ```
 
-Open **http://localhost:8501** in your browser.
+### Default accounts
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `admin123` | Full access |
+| `manager` | `mgr123` | Manager + My Tasks |
+
+> ⚠️ **Change these passwords immediately** via Admin → User Accounts after first login.
+
+Employee accounts are created in the Admin panel and must be linked to an employee record.
 
 ---
 
-## How the Bias-Free Matchmaker Works
+## 🐳 Docker
 
+```bash
+mkdir -p data logs
+docker compose up -d
+
+# Verify health
+curl http://localhost:8000/health
+
+# Live resource monitoring
+docker stats orchestra_api orchestra_ui
 ```
-match_score = (skill_score/10 × 0.5  +  coverage × 0.3)
-              × (1 − load_fraction × 0.4)
-```
 
-| Component      | Weight | Description                                  |
-|----------------|--------|----------------------------------------------|
-| Skill score    | 50%    | Mean proficiency on required skills (0-10)   |
-| Coverage       | 30%    | Fraction of required skills the person has   |
-| Load penalty   | 40%    | Penalises busy employees, not blocks them    |
+RAM allocation on an 8 GB machine:
 
-**No LLM involvement** in assignment logic → zero hallucination, zero bias.
+| Container | Hard limit | Role |
+|---|---|---|
+| `orchestra_api` | 900 MB | FastAPI + LangGraph |
+| `orchestra_ui` | 400 MB | Streamlit UI |
+| OS + Docker overhead | ~1 GB | — |
+| **Free headroom** | **~5.7 GB** | Ollama / other apps |
 
 ---
 
-## Features
+## 📁 Project Structure
 
-- 🤖 **4-node LangGraph pipeline**: Planner → Matchmaker → Scheduler → Reporter
-- 📊 **Live analytics**: Workload balance score, Est vs Actual hours chart
-- 🗺️ **Task Assignment Map**: filterable full log with status tracking
-- 🧠 **Skill Matrix heatmap**: proficiency across all employees × skills
-- 🔄 **Demo reset & simulation**: instantly simulate actual hours for analytics
-- 🔌 **Dual LLM support**: OpenAI GPT-4o-mini or Ollama Llama 3.1
+```
+orchestra-agent/
+├── app.py                  # Login gate + Home hub
+├── auth.py                 # PBKDF2 hashing · session · role guards
+├── database.py             # SQLite layer: schema, CRUD, generators
+├── graph.py                # LangGraph 4-node AI pipeline
+├── requirements.txt
+├── Dockerfile              # Two-stage python:3.11-slim (~300 MB image)
+├── docker-compose.yml      # RAM-limited services
+├── .env.example
+├── .streamlit/
+│   └── config.toml         # Dark theme
+├── api/
+│   └── main.py             # FastAPI: /orchestrate · /health · Loguru
+└── pages/
+    ├── 1_Manager.py        # Manager Dashboard
+    ├── 2_My_Tasks.py       # Employee Portal
+    └── 3_Admin.py          # Admin CRUD
+```
+
+---
+
+## 🤖 AI Pipeline Detail
+
+```
+Input: "Build a login system with JWT auth"
+  ↓
+Planner     → GPT-4o-mini / Llama 3.2
+              Decomposes into 3–7 sub-tasks
+              Assigns priority + difficulty + estimated hours
+  ↓
+Matchmaker  → Skill Matrix × Workload algorithm
+              Scores every employee for each task
+              Assigns best-fit person (bias-free)
+  ↓
+Scheduler   → Calculates deadlines from estimated hours
+              Writes tasks to SQLite
+  ↓
+Reporter    → Returns structured JSON to UI
+```
+
+Dual LLM support: **OpenAI GPT-4o-mini** (cloud) or **Ollama Llama 3.2** (local, free, ~2 GB RAM).
+
+---
+
+## 🔐 Security
+
+- PBKDF2-SHA256 · 310,000 iterations · per-user random salt (NIST SP 800-132)
+- Constant-time comparison — prevents timing attacks
+- Role-guard on every page — unauthorized requests redirect to login
+- Zero external auth libraries — Python stdlib `hashlib` / `hmac` / `secrets` only
+
+---
+
+## 🔧 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| AI / Orchestration | LangGraph · LangChain · OpenAI API / Ollama |
+| Backend API | FastAPI · Uvicorn |
+| Frontend | Streamlit (multi-page) |
+| Database | SQLite (WAL mode · batch generators) |
+| Data Validation | Pydantic v2 |
+| Visualization | Plotly (Gantt · heatmap · bar) |
+| Logging | Loguru (rotating 10 MB/file) |
+| Auth | Python stdlib (PBKDF2-SHA256) |
+| Container | Docker · python:3.11-slim two-stage |
+
+---
+
+## 🌐 Free Deployment
+
+### Streamlit Community Cloud (easiest)
+```
+1. Push to public GitHub repo
+2. share.streamlit.io → New app → set Main file: app.py
+3. Settings → Secrets → OPENAI_API_KEY = "sk-..."
+4. Deploy — get a free HTTPS URL in ~3 min
+```
+
+### Hugging Face Spaces (16 GB RAM — recommended)
+```
+1. New Space → SDK: Streamlit
+2. Add to README header: sdk: streamlit, app_file: app.py
+3. git push → auto-deploys
+4. Settings → Secrets → add OPENAI_API_KEY
+```
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE)
+
+---
+
+<div align="center">
+Built with LangGraph · FastAPI · Streamlit · SQLite
+</div>
