@@ -1,25 +1,23 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# docker-compose.yml  ·  Orchestra-Agent  ·  Production
+# docker-compose.yml  ·  Orchestra-Agent  ·  Hybrid LLM Edition
 # ─────────────────────────────────────────────────────────────────────────────
-# Architecture:
-#   api        FastAPI + LangGraph  (port 8000)  RAM limit 900 MB
-#   streamlit  Streamlit UI         (port 8501)  RAM limit 400 MB
-#   Both share the same SQLite volume → single source of truth
+# Total RAM budget  ≤ 1 GB (enforced at cgroup level):
+#   streamlit   350 MB
+#   api         500 MB
+#   overhead    ~150 MB OS + Docker shim
 #
-# WHY separate services?
-#   - api can be scaled independently (e.g. 2 replicas) without duplicating UI
-#   - If the LLM call OOMs, only the api container restarts, UI stays up
-#   - Resource limits enforced at the cgroup level — kernel enforces them
-#     regardless of what the Python process does (no easy bypass)
+# Secrets management:
+#   1. Create a .env file (never commit):
+#         GOOGLE_API_KEY=AIza...
+#         OPENAI_API_KEY=sk-...      # optional fallback
+#   2. docker compose --env-file .env up -d
+#   3. Keys are injected at runtime — not baked into the image layer
 #
-# TOTAL RAM budget on 8 GB host:
-#   api        ≤ 900 MB
-#   streamlit  ≤ 400 MB
-#   OS + Docker overhead  ~1 GB
-#   Free for swap / other apps  ~5.7 GB  ✓
+# Engine priority (matches graph.py):
+#   Gemini 1.5 Flash  → GOOGLE_API_KEY present   (recommended, free quota)
+#   OpenAI GPT-4o-mini→ OPENAI_API_KEY present   (fallback)
+#   Ollama Llama 3.2  → OLLAMA_HOST present       (local only)
 # ─────────────────────────────────────────────────────────────────────────────
-
-version: "3.9"
 
 services:
 
@@ -42,18 +40,20 @@ services:
     environment:
       - DATA_DIR=/data
       - LOG_DIR=/app/logs
-      # Paste your key here, or use a .env file
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # ── LLM secrets — set in .env file, never hardcode here ──────────────
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}    # Gemini 1.5 Flash (primary)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}    # GPT-4o-mini (fallback)
+      - OLLAMA_HOST=${OLLAMA_HOST:-}          # e.g. http://host.docker.internal:11434
     volumes:
-      - orchestra_data:/data       # SQLite database
-      - orchestra_logs:/app/logs   # log files
+      - orchestra_data:/data
+      - orchestra_logs:/app/logs
     deploy:
       resources:
         limits:
-          memory: 900M             # hard cap — kernel OOM-kills if exceeded
-          cpus: "1.5"
+          memory: 500M          # hard cap — LangGraph + LLM client overhead
+          cpus: "1.0"
         reservations:
-          memory: 200M
+          memory: 150M
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c",
@@ -70,14 +70,16 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: orchestra_ui
-    # Default CMD in Dockerfile is already `streamlit run app.py`
     ports:
       - "8501:8501"
     environment:
       - DATA_DIR=/data
       - LOG_DIR=/app/logs
-      # Streamlit pages call /orchestrate on the api service by name
       - API_BASE_URL=http://api:8000
+      # Pass same keys so sidebar can validate them without hitting the API
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-}
     volumes:
       - orchestra_data:/data
       - orchestra_logs:/app/logs
@@ -87,7 +89,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 400M
+          memory: 350M          # Streamlit + Pandas + Plotly
           cpus: "0.8"
         reservations:
           memory: 128M
@@ -99,7 +101,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ./data          # ./data folder on host — easy to back up
+      device: ./data
 
   orchestra_logs:
     driver: local

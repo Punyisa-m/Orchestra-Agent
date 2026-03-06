@@ -1,27 +1,29 @@
-# Orchestra-Agent — Production Requirements
-# Pin minor versions; patch versions float for security fixes.
+# Orchestra-Agent — Hybrid LLM Edition
+# Works on: Local · Docker · Hugging Face Spaces
 
-# ── AI / LangGraph ─────────────────────────────────────────────────
+# ── AI / LangGraph ───────────────────────────────────────────────────
 langgraph>=0.2.0,<0.3
 langchain-core>=0.3.0,<0.4
-langchain-openai>=0.2.0,<0.3      # OpenAI backend
-langchain-ollama>=0.2.0,<0.3      # Local Ollama backend
 
-# ── Data validation ─────────────────────────────────────────────────
+# ── LLM Providers (install all; lazy-imported at runtime) ────────────
+langchain-google-genai>=2.0.0,<3     # Gemini 2.0 Flash — primary on HF
+langchain-groq>=0.2.0,<0.3             # Groq Llama 3.1 8B — 14,400 req/day free
+langchain-openai>=0.2.0,<0.3          # GPT-4o-mini — fallback
+langchain-ollama>=0.2.0,<0.3          # Llama 3.2 — local only
+
+# ── Data validation ──────────────────────────────────────────────────
 pydantic>=2.0.0,<3
 
-# ── Web frameworks ──────────────────────────────────────────────────
+# ── Web UI ───────────────────────────────────────────────────────────
 streamlit>=1.38.0,<2
-fastapi>=0.115.0,<0.116
-uvicorn[standard]>=0.30.0,<0.32   # ASGI server for FastAPI
 
-# ── Visualisation ───────────────────────────────────────────────────
+# ── Visualisation ────────────────────────────────────────────────────
 plotly>=5.22.0,<6
 pandas>=2.0.0,<3
 
-# ── Monitoring / Logging ────────────────────────────────────────────
+# ── FastAPI (optional — api/main.py, not needed on HF Spaces) ────────
+fastapi>=0.115.0,<0.116
+uvicorn[standard]>=0.30.0,<0.32
 loguru>=0.7.0,<0.8
-psutil>=6.0.0,<7                   # memory/CPU metrics for /health
-
-# ── HTTP client (Streamlit → FastAPI calls) ─────────────────────────
-httpx>=0.27.0,<0.28
+psutil>=6.0.0,<7
+httpx>=0.28.1,<1.0.0

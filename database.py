@@ -28,7 +28,19 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Generator
 from pydantic import BaseModel, Field
 
-_DATA_DIR = os.getenv("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+# DATA_DIR resolution order:
+#   1. DATA_DIR env var (set in docker-compose or HF Space secrets)
+#   2. /data if it exists and is writable (HF Spaces persistent storage)
+#   3. Project root (local dev)
+def _resolve_data_dir() -> str:
+    if os.getenv("DATA_DIR"):
+        return os.getenv("DATA_DIR")
+    hf_data = "/data"
+    if os.path.isdir(hf_data) and os.access(hf_data, os.W_OK):
+        return hf_data
+    return os.path.dirname(os.path.abspath(__file__))
+
+_DATA_DIR = _resolve_data_dir()
 DB_PATH   = os.path.join(_DATA_DIR, "orchestra.db")
 
 

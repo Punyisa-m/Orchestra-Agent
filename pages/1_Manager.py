@@ -24,7 +24,7 @@ from database import (
     get_all_employees_with_skills, update_task_status,
     simulate_actual_hours, reset_demo_data,
 )
-from graph import run_orchestra
+from graph import run_orchestra, get_available_engines
 from auth import require_auth, render_user_widget, ROLE_MANAGER
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -410,15 +410,92 @@ with st.sidebar:
     render_user_widget()
     st.divider()
 
-    # LLM engine
-    llm_mode = st.radio("AI Engine", ["OpenAI GPT-4o-mini", "Ollama Llama 3.2"])
-    if llm_mode.startswith("OpenAI"):
-        key = st.text_input("API Key", type="password",
-                            value=os.getenv("OPENAI_API_KEY",""))
-        if key: os.environ["OPENAI_API_KEY"] = key
-    else:
-        os.environ.pop("OPENAI_API_KEY", None)
-        st.caption("Ensure `ollama serve` is running.")
+    # ── Hybrid LLM Engine Selector ────────────────────────────────────────────
+    _env = get_available_engines()
+    _on_hf = _env["on_hf"]
+
+    # Build option list based on what keys are actually present
+    _opts = []
+    if _env["gemini"]:  _opts.append("Gemini 2.0 Flash")
+    if _env["groq"]:    _opts.append("Groq Llama 3.1 8B")
+    if _env["openai"]:  _opts.append("OpenAI GPT-4o-mini")
+    if _env["ollama"]:  _opts.append("Ollama Llama 3.2")
+
+    # Always show at minimum the engines that could work with a key pasted in
+    if not _opts:
+        _opts = (["Gemini 2.0 Flash", "Groq Llama 3.1 8B", "OpenAI GPT-4o-mini"]
+                 if _on_hf else
+                 ["Gemini 2.0 Flash", "Groq Llama 3.1 8B",
+                  "OpenAI GPT-4o-mini", "Ollama Llama 3.2"])
+
+    # Environment badge
+    _badge_color = "#3b82f6" if _on_hf else "#10b981"
+    _badge_label = "☁️ Hugging Face" if _on_hf else "💻 Local"
+    st.markdown(
+        f'''<div style="font-size:.68rem;font-weight:700;letter-spacing:.06em;
+        text-transform:uppercase;background:{_badge_color}22;
+        color:{_badge_color};border:1px solid {_badge_color}44;
+        border-radius:6px;padding:2px 8px;display:inline-block;
+        margin-bottom:.6rem">{_badge_label}</div>''',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        "<div style='font-size:.72rem;font-weight:700;color:#64748b;"
+        "text-transform:uppercase;letter-spacing:.07em;"
+        "margin-bottom:.5rem'>AI Engine</div>",
+        unsafe_allow_html=True
+    )
+    llm_mode = st.radio("AI Engine", _opts, label_visibility="collapsed")
+    _engine_key = (
+        "gemini"  if "Gemini"  in llm_mode else
+        "groq"    if "Groq"    in llm_mode else
+        "openai"  if "OpenAI"  in llm_mode else
+        "ollama"
+    )
+
+    # Per-engine key input / status
+    if _engine_key == "gemini":
+        _gkey = os.getenv("GOOGLE_API_KEY", "")
+        if not _gkey:
+            _inp = st.text_input("Google API Key", type="password",
+                                 placeholder="AIza...",
+                                 help="Get free key at aistudio.google.com")
+            if _inp: os.environ["GOOGLE_API_KEY"] = _inp
+        if not os.getenv("GOOGLE_API_KEY"):
+            st.warning("Paste your Google API key above.", icon="⚠️")
+        else:
+            st.success("Gemini 2.0 Flash ready", icon="✅")
+
+    elif _engine_key == "groq":
+        _gqkey = os.getenv("GROQ_API_KEY", "")
+        if not _gqkey:
+            _inp = st.text_input("Groq API Key", type="password",
+                                 placeholder="gsk_...",
+                                 help="Free at console.groq.com/keys — no credit card")
+            if _inp: os.environ["GROQ_API_KEY"] = _inp
+        if not os.getenv("GROQ_API_KEY"):
+            st.warning("Paste your Groq API key above.", icon="⚠️")
+            st.caption("Free: 14,400 req/day · Get key → console.groq.com")
+        else:
+            st.success("Groq Llama 3.1 8B ready", icon="✅")
+            st.caption("14,400 req/day free ✓")
+
+    elif _engine_key == "openai":
+        _okey = os.getenv("OPENAI_API_KEY", "")
+        if not _okey:
+            _inp = st.text_input("OpenAI API Key", type="password",
+                                 placeholder="sk-...")
+            if _inp: os.environ["OPENAI_API_KEY"] = _inp
+        if not os.getenv("OPENAI_API_KEY"):
+            st.warning("Paste your OpenAI API key above.", icon="⚠️")
+        else:
+            st.success("GPT-4o-mini ready", icon="✅")
+
+    else:  # ollama
+        _host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        st.caption(f"Ollama @ {_host}")
+        st.caption("Run: `ollama pull llama3.2` first.")
 
     st.divider()
 
@@ -532,7 +609,7 @@ if run_btn and user_input.strip():
         time.sleep(0.2)
         st.write("**[3/4] Scheduler** — chaining deadlines per employee queue...")
         time.sleep(0.2)
-        result = run_orchestra(user_input)
+        result = run_orchestra(user_input, engine=_engine_key)
         st.write("**[4/4] Reporter** — writing to database...")
         status.update(label="Board generated.", state="complete")
 

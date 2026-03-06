@@ -1,10 +1,13 @@
 [server]
-headless = true
-enableCORS = false
+headless      = true
+enableCORS    = false
+enableXsrfProtection = false
 maxUploadSize = 10
+port          = 7860          # Hugging Face Spaces default port
 
 [theme]
-base = "dark"
-backgroundColor = "#0a0e1a"
+base             = "dark"
+backgroundColor  = "#0a0e1a"
 secondaryBackgroundColor = "#111827"
-textColor = "#f1f5f9"
+primaryColor     = "#3b82f6"
+textColor        = "#f1f5f9"
