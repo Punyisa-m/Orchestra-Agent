@@ -8,6 +8,8 @@ sdk: streamlit
 sdk_version: 1.38.0
 app_file: app.py
 pinned: false
+license: mit
+short_description: AI-powered task manager — plain English to assigned Kanban board
 ---
 
 # 🎼 Orchestra-Agent
